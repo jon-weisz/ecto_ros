@@ -32,7 +32,7 @@
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/condition_variable.hpp>
 #include <string>
-
+#include <boost/thread/condition_variable.hpp>
 #include <boost/foreach.hpp>
 #include <boost/python/stl_iterator.hpp>
 
@@ -87,15 +87,38 @@ namespace ecto_ros
     int
     process(const tendrils& in, const tendrils& out)
     {
-      BOOST_FOREACH(ecto::cell::ptr cell,cells_)
+      std::list<ecto::cell::ptr> unupdated_cells(cells_.begin(), cells_.end());
+      
+      while(!unupdated_cells.empty())
       {
-        int value = cell->process();
-        if(value == ecto::QUIT)
-          return ecto::QUIT;
-      }
+	unsigned int counter = 0; 	
+	std::list<ecto::cell::ptr> finished_cells;
+	BOOST_FOREACH(ecto::cell::ptr cell, unupdated_cells)
+	  {	    
+	    int value = cell->process();
+	    if(value == ecto::QUIT)
+	      return ecto::QUIT;
+	    if (value == ecto::OK)
+	      finished_cells.push_back(cell);
+	  }
+	
+	BOOST_FOREACH(ecto::cell::ptr cell, finished_cells)
+	{
+	  unupdated_cells.remove(cell);
+	}  
+
+	if(!unupdated_cells.empty())
+	  {
+	    boost::this_thread::interruption_point();
+	    if ( counter++ > 40 )  {
+	       return ecto::DO_OVER; // give the scheduler a chance to manage (e.g. abort)
+	    }
+	  }
+	}
       return ecto::OK;
     }
     std::vector<ecto::cell::ptr> cells_;
+
   };
 }
 
